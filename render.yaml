@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: pymentor-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false          # You must set this manually in Render dashboard
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:///./pymentor.db
+      - key: FRONTEND_URL
+        sync: false          # Set to your Vercel URL after deploying frontend
+    plan: free
