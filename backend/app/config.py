@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     # Gemini
     gemini_api_key: str = "your-gemini-api-key-here"
-    gemini_model: str = "gemini-1.5-flash"  # widely available; override via GEMINI_MODEL env var
+    gemini_model: str = "gemini-2.5-flash"  # override via GEMINI_MODEL env var if needed
 
     # CORS
     frontend_url: str = "http://localhost:5173"
