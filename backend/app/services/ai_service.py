@@ -31,6 +31,15 @@ MODE_PROMPTS = {
     "hint": "Provide helpful hints and guidance for solving this Python programming problem. Don't give the full solution — give progressive hints that guide the learner toward the answer.",
 }
 
+# Ordered list of fallback models to try if the primary model is unavailable/deprecated
+FALLBACK_MODELS = [
+    "gemini-3.8-flash",        # Current recommended model (as of 2026)
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+]
+
 
 async def get_ai_response(content: str, mode: str = "ask") -> str:
     """Send a prompt to Gemini or use a simulated mock response if key is missing/placeholder."""
@@ -137,24 +146,44 @@ async def get_ai_response(content: str, mode: str = "ask") -> str:
     mode_instruction = MODE_PROMPTS.get(mode, MODE_PROMPTS["ask"])
     full_prompt = f"{mode_instruction}\n\n{content}"
 
-    try:
-        response = client.models.generate_content(
-            model=settings.gemini_model,
-            contents=full_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.7,
-                max_output_tokens=4096,
-            ),
-        )
-        return response.text or "I couldn't generate a response. Please try again."
-    except Exception as e:
-        error_msg = str(e)
-        if "API_KEY" in error_msg.upper() or "401" in error_msg or "403" in error_msg:
-            return (
-                "⚠️ **API Key Error**: The Gemini API key is invalid or not configured.\n\n"
-                "Please set a valid `GEMINI_API_KEY` in your `.env` file.\n"
-                "Get a free key at [Google AI Studio](https://aistudio.google.com/apikey)."
+    # Build list of models to try: configured model first, then fallbacks (deduped)
+    primary_model = settings.gemini_model
+    models_to_try = [primary_model] + [m for m in FALLBACK_MODELS if m != primary_model]
+
+    last_error: str = ""
+    for model_name in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=full_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    temperature=0.7,
+                    max_output_tokens=4096,
+                ),
             )
-        return f"⚠️ **AI Service Error**: {error_msg}\n\nPlease try again in a moment."
+            return response.text or "I couldn't generate a response. Please try again."
+        except Exception as e:
+            error_msg = str(e)
+            # If the model is deprecated / not found, try the next fallback
+            if "404" in error_msg or "NOT_FOUND" in error_msg or "no longer available" in error_msg.lower():
+                last_error = error_msg
+                continue
+            # Auth errors — return immediately, retrying won't help
+            if "API_KEY" in error_msg.upper() or "401" in error_msg or "403" in error_msg:
+                return (
+                    "⚠️ **API Key Error**: The Gemini API key is invalid or not configured.\n\n"
+                    "Please set a valid `GEMINI_API_KEY` in your `.env` file.\n"
+                    "Get a free key at [Google AI Studio](https://aistudio.google.com/apikey)."
+                )
+            # Any other unexpected error — surface it immediately
+            return f"⚠️ **AI Service Error**: {error_msg}\n\nPlease try again in a moment."
+
+    # All models in the fallback chain are exhausted
+    return (
+        "⚠️ **AI Service Error**: All available Gemini models are currently unavailable.\n\n"
+        f"Last error: {last_error}\n\n"
+        "Please try again later or check your API key at "
+        "[Google AI Studio](https://aistudio.google.com/apikey)."
+    )
 
