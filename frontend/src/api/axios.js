@@ -5,6 +5,8 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // Give Render's free tier enough time to wake up from cold start (~50s)
+  timeout: 60000,
 });
 
 // Interceptor to inject JWT token into requests
@@ -21,12 +23,16 @@ api.interceptors.request.use(
   }
 );
 
-// Optional response interceptor to handle token expiry / auto logout
+// Response interceptor — only auto-logout on a real 401 from the server.
+// Network errors / timeouts (no error.response) are NOT treated as auth failures.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
-      // Auto-logout if unauthorized (expired token)
+    const isRealUnauthorized =
+      error.response && error.response.status === 401;
+
+    if (isRealUnauthorized) {
+      // Auto-logout if unauthorized (expired / invalid token)
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       // Dispatch custom event to let contexts know user has been logged out
